@@ -1,0 +1,538 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pump Parallel Operation Diagnostic</title>
+<style>
+  :root{
+    --bg:#0a1620;
+    --panel:#0f2233;
+    --panel-2:#0c1c2a;
+    --line:#1e3a52;
+    --cyan:#3fd0e0;
+    --cyan-dim:#1c6b78;
+    --amber:#f0a93a;
+    --red:#e2555a;
+    --green:#4fbf8b;
+    --text:#dce8ef;
+    --text-dim:#7f9bb0;
+    --mono:'IBM Plex Mono','Courier New',monospace;
+    --sans:'IBM Plex Sans',-apple-system,'Segoe UI',sans-serif;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    background:
+      linear-gradient(var(--line) 1px, transparent 1px) 0 0/100% 28px,
+      linear-gradient(90deg, var(--line) 1px, transparent 1px) 0 0/28px 100%,
+      var(--bg);
+    background-blend-mode:overlay;
+    color:var(--text);
+    font-family:var(--sans);
+    padding:18px 14px 60px;
+  }
+  .wrap{max-width:760px;margin:0 auto;}
+  header{margin-bottom:22px;border-bottom:1px solid var(--line);padding-bottom:16px;}
+  .eyebrow{
+    font-family:var(--mono);font-size:11px;letter-spacing:2px;color:var(--cyan);
+    text-transform:uppercase;
+  }
+  h1{font-size:20px;margin:6px 0 4px;font-weight:600;letter-spacing:.3px;}
+  .sub{color:var(--text-dim);font-size:13px;line-height:1.5;}
+  .sub b{color:var(--amber);font-weight:600;}
+
+  .card{
+    background:var(--panel);
+    border:1px solid var(--line);
+    border-radius:6px;
+    padding:16px;
+    margin-bottom:14px;
+    position:relative;
+  }
+  .card::before{
+    content:attr(data-tag);
+    position:absolute;top:-9px;left:12px;
+    background:var(--panel);padding:0 8px;
+    font-family:var(--mono);font-size:10px;letter-spacing:1.5px;color:var(--cyan-dim);
+  }
+  .card h2{
+    font-size:13px;margin:2px 0 12px;color:var(--cyan);letter-spacing:.5px;
+    display:flex;align-items:center;gap:8px;
+  }
+  .dot{width:8px;height:8px;border-radius:50%;background:var(--cyan);display:inline-block;}
+  .dotB{background:var(--amber);}
+  .dotAB{background:var(--green);}
+
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+  .field{display:flex;flex-direction:column;gap:4px;}
+  .field.full{grid-column:1/-1;}
+  label{font-size:11px;color:var(--text-dim);font-family:var(--mono);}
+  input{
+    background:var(--panel-2);
+    border:1px solid var(--line);
+    border-radius:4px;
+    color:var(--text);
+    padding:9px 10px;
+    font-family:var(--mono);
+    font-size:14px;
+    width:100%;
+  }
+  input:focus{outline:none;border-color:var(--cyan);}
+
+  .unitbar{
+    display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;
+    font-size:11px;color:var(--text-dim);align-items:center;
+  }
+  .unitbar select{
+    background:var(--panel-2);border:1px solid var(--line);color:var(--text);
+    font-family:var(--mono);font-size:12px;padding:5px 8px;border-radius:4px;
+  }
+
+  button.run{
+    width:100%;padding:14px;background:var(--cyan);color:#04222a;border:none;
+    border-radius:6px;font-family:var(--mono);font-size:14px;font-weight:700;
+    letter-spacing:1px;cursor:pointer;margin-top:4px;
+  }
+  button.run:active{transform:translateY(1px);}
+
+  #results{display:none;}
+  .verdict{
+    border-radius:6px;padding:16px;margin-bottom:14px;border:1px solid var(--line);
+  }
+  .verdict.ok{border-color:var(--green);background:rgba(79,191,139,0.08);}
+  .verdict.warn{border-color:var(--amber);background:rgba(240,169,58,0.08);}
+  .verdict.bad{border-color:var(--red);background:rgba(226,85,90,0.08);}
+  .verdict .tag{font-family:var(--mono);font-size:11px;letter-spacing:1.5px;margin-bottom:6px;display:block;}
+  .verdict.ok .tag{color:var(--green);}
+  .verdict.warn .tag{color:var(--amber);}
+  .verdict.bad .tag{color:var(--red);}
+  .verdict p{margin:6px 0;font-size:13.5px;line-height:1.6;}
+
+  table{width:100%;border-collapse:collapse;font-size:12.5px;margin-bottom:6px;}
+  th,td{text-align:left;padding:7px 8px;border-bottom:1px solid var(--line);font-family:var(--mono);}
+  th{color:var(--text-dim);font-weight:500;font-size:11px;}
+  td.num{text-align:right;}
+  tr.highlight td{color:var(--amber);}
+
+  .findings{display:flex;flex-direction:column;gap:10px;}
+  .finding{
+    display:flex;gap:10px;padding:12px;border-radius:5px;background:var(--panel-2);
+    border-left:3px solid var(--line);
+  }
+  .finding.f-bad{border-left-color:var(--red);}
+  .finding.f-warn{border-left-color:var(--amber);}
+  .finding.f-ok{border-left-color:var(--green);}
+  .finding .icon{font-family:var(--mono);font-size:16px;line-height:1;padding-top:1px;}
+  .finding .body b{display:block;font-size:13px;margin-bottom:3px;color:var(--text);}
+  .finding .body span{font-size:12.5px;color:var(--text-dim);line-height:1.55;}
+
+  svg{width:100%;height:auto;display:block;}
+  .chartcard{overflow-x:auto;}
+  .legend{display:flex;gap:16px;font-size:11px;font-family:var(--mono);color:var(--text-dim);margin-top:8px;flex-wrap:wrap;}
+  .legend span{display:flex;align-items:center;gap:5px;}
+  .sw{width:10px;height:10px;border-radius:2px;}
+
+  .checklist{list-style:none;padding:0;margin:0;display:flex;flex-direction:column;gap:8px;}
+  .checklist li{
+    font-size:13px;padding:10px 12px;background:var(--panel-2);border-radius:5px;
+    display:flex;gap:10px;border:1px solid var(--line);
+  }
+  .checklist li::before{content:"▸";color:var(--cyan);font-weight:700;}
+
+  footer{margin-top:24px;text-align:center;font-size:11px;color:var(--text-dim);font-family:var(--mono);}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <div class="eyebrow">Closed-Loop Pump System · Root-Cause Panel</div>
+    <h1>Pump Parallel Operation Diagnostic</h1>
+    <div class="sub">กรอกข้อมูล 3 เงื่อนไขการรัน (A เดี่ยว / B เดี่ยว / A+B) เพื่อวิเคราะห์ว่าทำไม flow รวมถึงเพิ่มขึ้นน้อยกว่าที่คาด เช่น <b>40 → 55 CMH</b> แทนที่จะเพิ่มขึ้นเกือบเท่าตัว</div>
+  </header>
+
+  <div class="unitbar">
+    <span>หน่วย Flow:</span>
+    <select id="unitFlow"><option>CMH</option><option>m³/hr</option><option>L/s</option><option>GPM</option></select>
+    <span>หน่วยแรงดัน:</span>
+    <select id="unitP"><option>bar</option><option>kg/cm²</option><option>kPa</option><option>psi</option></select>
+    <span>Density:</span>
+    <input type="number" id="density" value="1.00" style="width:64px;padding:4px 6px;font-size:12px;" step="0.01">
+    <span style="margin-left:auto;">* เลือกหน่วย Flow ที่กรอกจริงได้ — โปรแกรมจะแปลงเป็น CMH ให้อัตโนมัติก่อนคำนวณทุกครั้ง (ผลลัพธ์แสดงเป็น CMH เสมอ)</span>
+  </div>
+
+  <div class="card" data-tag="CATALOG">
+    <h2>Reference Pump Curve (จาก Datasheet EBARA GS 50-250/3)</h2>
+    <div class="sub" style="margin-bottom:10px;">ค่า default ดึงจาก datasheet จริง (Q<sub>min</sub> 2.06 l/s@16.7m, BEP 11.4 l/s@15.3m, Q<sub>max</sub> 14.6 l/s@14.0m แปลงเป็น CMH แล้ว) — ใช้เทียบว่า Pump A/B ที่วัดได้หน้างานตรงกับ curve โรงงานหรือเสื่อมสภาพไปแล้ว แก้ไขได้ถ้าใช้ปั๊มรุ่นอื่นหรืออยากใส่หน่วยอื่น</div>
+    <div class="grid">
+      <div class="field"><label>Q min (หน่วยเดียวกับ Flow ด้านบน)</label><input type="number" id="refQ1" value="7.42"></div>
+      <div class="field"><label>Head @ Q min (m)</label><input type="number" id="refH1" value="16.7"></div>
+      <div class="field"><label>Q BEP (Operating)</label><input type="number" id="refQ2" value="41.0"></div>
+      <div class="field"><label>Head @ Q BEP (m)</label><input type="number" id="refH2" value="15.3"></div>
+      <div class="field"><label>Q max</label><input type="number" id="refQ3" value="52.6"></div>
+      <div class="field"><label>Head @ Q max (m)</label><input type="number" id="refH3" value="14.0"></div>
+    </div>
+  </div>
+
+  <div class="card" data-tag="RUN 01">
+    <h2><span class="dot"></span>Pump A Run (เดินเดี่ยว)</h2>
+    <div class="grid">
+      <div class="field"><label>Flow (Q<sub>A</sub>)</label><input type="number" id="QA" placeholder="40"></div>
+      <div class="field"><label>Current (A)</label><input type="number" id="IA" placeholder="45"></div>
+      <div class="field"><label>Suction Pressure</label><input type="number" id="PsA" placeholder="0.5"></div>
+      <div class="field"><label>Discharge Pressure</label><input type="number" id="PdA" placeholder="2.8"></div>
+    </div>
+  </div>
+
+  <div class="card" data-tag="RUN 02">
+    <h2><span class="dot dotB"></span>Pump B Run (เดินเดี่ยว)</h2>
+    <div class="grid">
+      <div class="field"><label>Flow (Q<sub>B</sub>)</label><input type="number" id="QB" placeholder="39"></div>
+      <div class="field"><label>Current (A)</label><input type="number" id="IB" placeholder="44"></div>
+      <div class="field"><label>Suction Pressure</label><input type="number" id="PsB" placeholder="0.5"></div>
+      <div class="field"><label>Discharge Pressure</label><input type="number" id="PdB" placeholder="2.75"></div>
+    </div>
+  </div>
+
+  <div class="card" data-tag="RUN 03">
+    <h2><span class="dot dotAB"></span>Pump A+B Run (เดินพร้อมกัน)</h2>
+    <div class="grid">
+      <div class="field full"><label>Flow รวม (Q<sub>A+B</sub>)</label><input type="number" id="QAB" placeholder="55"></div>
+      <div class="field"><label>Current A (ขณะรันคู่)</label><input type="number" id="IA2" placeholder="40"></div>
+      <div class="field"><label>Current B (ขณะรันคู่)</label><input type="number" id="IB2" placeholder="39"></div>
+      <div class="field"><label>Suction Pressure (Header ร่วม)</label><input type="number" id="PsAB" placeholder="0.3"></div>
+      <div class="field"><label>Discharge Pressure (Header ร่วม)</label><input type="number" id="PdAB" placeholder="3.4"></div>
+    </div>
+  </div>
+
+  <button class="run" onclick="analyze()">▶ วิเคราะห์ปัญหา</button>
+  <div id="errBox" style="display:none;margin-top:10px;padding:12px 14px;background:rgba(226,85,90,0.12);border:1px solid var(--red);border-radius:6px;font-size:13px;color:var(--red);font-family:var(--mono);"></div>
+
+  <div id="results">
+
+    <div id="verdictBox"></div>
+
+    <div class="card" data-tag="DATA">
+      <h2>ค่าที่คำนวณได้</h2>
+      <table id="dataTable"></table>
+    </div>
+
+    <div class="card chartcard" data-tag="CURVE">
+      <h2>System Curve vs Operating Points</h2>
+      <div id="chart"></div>
+      <div class="legend">
+        <span><i class="sw" style="background:var(--cyan)"></i>A เดี่ยว</span>
+        <span><i class="sw" style="background:var(--amber)"></i>B เดี่ยว</span>
+        <span><i class="sw" style="background:var(--green)"></i>A+B จริง</span>
+        <span><i class="sw" style="background:#e2555a"></i>A+B ที่คาดการณ์ (จาก curve)</span>
+        <span><i class="sw" style="background:#b39ddb"></i>Catalog Curve (EBARA)</span>
+      </div>
+    </div>
+
+    <div class="card" data-tag="FINDINGS">
+      <h2>สาเหตุที่พบ (เรียงตามน้ำหนัก)</h2>
+      <div class="findings" id="findings"></div>
+    </div>
+
+    <div class="card" data-tag="ACTION">
+      <h2>ขั้นตอนตรวจสอบหน้างานที่แนะนำ</h2>
+      <ul class="checklist" id="checklist"></ul>
+    </div>
+
+  </div>
+
+  <footer>ผลลัพธ์อิงจากสมมติฐาน closed-loop, resistance-dominated system (ΔP ≈ K·Q²) — ใช้เป็นแนวทางเบื้องต้น ควรยืนยันด้วย pump curve จริงและการตรวจวัดหน้างาน</footer>
+</div>
+
+<script>
+function num(id){ return parseFloat(document.getElementById(id).value); }
+
+// bar/kg-cm2/kPa/psi -> meters of head, at SG=1 (divide by density for other fluids)
+const HEAD_FACTOR = {'bar':10.1972, 'kg/cm²':10.0, 'kPa':0.101972, 'psi':0.70307};
+// any flow unit -> CMH (m3/hr)
+const FLOW_FACTOR = {'CMH':1, 'm³/hr':1, 'L/s':3.6, 'GPM':0.227125};
+
+function toHead(deltaP, unitP, density){
+  return deltaP * HEAD_FACTOR[unitP] / density;
+}
+
+// Solve 3x3 linear system for quadratic fit H = c2*Q^2 + c1*Q + c0 through 3 points
+function fitQuadratic(pts){
+  const [ [Q1,H1],[Q2,H2],[Q3,H3] ] = pts;
+  const A = [[Q1*Q1,Q1,1],[Q2*Q2,Q2,1],[Q3*Q3,Q3,1]];
+  const b = [H1,H2,H3];
+  function det3(m){
+    return m[0][0]*(m[1][1]*m[2][2]-m[1][2]*m[2][1])
+         - m[0][1]*(m[1][0]*m[2][2]-m[1][2]*m[2][0])
+         + m[0][2]*(m[1][0]*m[2][1]-m[1][1]*m[2][0]);
+  }
+  const D = det3(A);
+  function replaceCol(m,col,vec){
+    return m.map((row,i)=>row.map((v,j)=> j===col? vec[i]:v));
+  }
+  const c2 = det3(replaceCol(A,0,b))/D;
+  const c1 = det3(replaceCol(A,1,b))/D;
+  const c0 = det3(replaceCol(A,2,b))/D;
+  return {c0,c1,c2, fn:(Q)=> c2*Q*Q + c1*Q + c0};
+}
+
+function analyze(){
+  try{
+  const ids=['QA','IA','PsA','PdA','QB','IB','PsB','PdB','QAB','IA2','IB2','PsAB','PdAB','refQ1','refH1','refQ2','refH2','refQ3','refH3','density'];
+  const errBox=document.getElementById('errBox');
+  errBox.style.display='none';
+  ids.forEach(id=>document.getElementById(id).style.borderColor='');
+
+  const QA=num('QA'), IA=num('IA'), PsA=num('PsA'), PdA=num('PdA');
+  const QB=num('QB'), IB=num('IB'), PsB=num('PsB'), PdB=num('PdB');
+  const QAB=num('QAB'), IA2=num('IA2'), IB2=num('IB2'), PsAB=num('PsAB'), PdAB=num('PdAB');
+  const refQ1=num('refQ1'), refH1=num('refH1'), refQ2=num('refQ2'), refH2=num('refH2'), refQ3=num('refQ3'), refH3=num('refH3');
+  const density=num('density');
+
+  const valMap={QA,IA,PsA,PdA,QB,IB,PsB,PdB,QAB,IA2,IB2,PsAB,PdAB,refQ1,refH1,refQ2,refH2,refQ3,refH3,density};
+  const missing = Object.keys(valMap).filter(k=>isNaN(valMap[k]));
+  if(missing.length>0){
+    missing.forEach(id=>document.getElementById(id).style.borderColor='#e2555a');
+    errBox.textContent = '⚠ กรุณากรอกข้อมูลให้ครบทุกช่อง (ยังขาด '+missing.length+' ช่อง — ช่องที่ขอบสีแดง)';
+    errBox.style.display='block';
+    document.getElementById('results').style.display='none';
+    return;
+  }
+  if(QA<=0||QB<=0||QAB<=0){
+    errBox.textContent = '⚠ ค่า Flow ต้องมากกว่า 0';
+    errBox.style.display='block';
+    return;
+  }
+
+  const unitP = document.getElementById('unitP').value;
+  const unitFlow = document.getElementById('unitFlow').value;
+  const fFlow = FLOW_FACTOR[unitFlow];
+
+  // normalize every flow value to CMH
+  const QA_cmh = QA*fFlow, QB_cmh = QB*fFlow, QAB_cmh = QAB*fFlow;
+  const refQ1_cmh = refQ1*fFlow, refQ2_cmh = refQ2*fFlow, refQ3_cmh = refQ3*fFlow;
+  // from here on, use the _cmh versions for every calculation so all flow math is in CMH regardless of input unit
+  const _QA=QA_cmh, _QB=QB_cmh, _QAB=QAB_cmh;
+
+  // convert measured suction/discharge pressure differences to Head (m)
+  const dPA = toHead(PdA-PsA, unitP, density);
+  const dPB = toHead(PdB-PsB, unitP, density);
+  const dPAB = toHead(PdAB-PsAB, unitP, density);
+
+  const KA = dPA/(_QA*_QA), KB = dPB/(_QB*_QB), Kavg=(KA+KB)/2;
+  const predDP = Kavg*_QAB*_QAB;
+  const gapPct = ((dPAB-predDP)/predDP)*100;
+
+  const nA = Math.log(dPAB/dPA)/Math.log(_QAB/_QA);
+  const nB = Math.log(dPAB/dPB)/Math.log(_QAB/_QB);
+  const nAvg = (nA+nB)/2;
+
+  const flowDiffPct = ((_QA-_QB)/((_QA+_QB)/2))*100;
+  const dpDiffPct = ((dPA-dPB)/((dPA+dPB)/2))*100;
+  const currDiffPct = ((IA-IB)/((IA+IB)/2))*100;
+
+  const minSingleSuction = Math.min(PsA,PsB);
+  const suctionDrop = minSingleSuction - PsAB; // positive = suction dropped further when combined (raw gauge units)
+
+  const currDropA = ((IA2-IA)/IA)*100;
+  const currDropB = ((IB2-IB)/IB)*100;
+  const currAsymPct = ((IA2-IB2)/((IA2+IB2)/2))*100;
+
+  const flowGainPct = ((_QAB-Math.max(_QA,_QB))/Math.max(_QA,_QB))*100;
+
+  // ---- catalog reference curve comparison (all in CMH now) ----
+  const catalog = fitQuadratic([[refQ1_cmh,refH1],[refQ2_cmh,refH2],[refQ3_cmh,refH3]]);
+  const HrefA = catalog.fn(_QA);
+  const HrefB = catalog.fn(_QB);
+  const devA = ((dPA-HrefA)/HrefA)*100;
+  const devB = ((dPB-HrefB)/HrefB)*100;
+
+  // ---------- table ----------
+  const rows = [
+    ['Head (จากแรงดันวัดจริง, m)', dPA.toFixed(2), dPB.toFixed(2), dPAB.toFixed(2)],
+    ['Head ตาม Catalog Curve ที่ Q เดียวกัน (m)', HrefA.toFixed(2), HrefB.toFixed(2), '—'],
+    ['ส่วนต่างจาก Catalog (%)', devA.toFixed(1)+' %', devB.toFixed(1)+' %', '—'],
+    ['System constant K = H/Q²', KA.toExponential(3), KB.toExponential(3), '—'],
+    ['Head คาดการณ์ที่ Q รวม (จาก K เฉลี่ย, m)', '—', '—', predDP.toFixed(2)],
+    ['ส่วนต่าง Head จริง vs คาดการณ์ (parallel)', '—', '—', gapPct.toFixed(1)+' %'],
+    ['เลขชี้กำลัง n (H∝Qⁿ) เทียบ A / B', nA.toFixed(2), nB.toFixed(2), nAvg.toFixed(2)+' (avg)'],
+  ];
+  let html = '<tr><th>รายการ</th><th>Pump A</th><th>Pump B</th><th>A+B</th></tr>';
+  rows.forEach(r=>{
+    html += `<tr><td>${r[0]}</td><td class="num">${r[1]}</td><td class="num">${r[2]}</td><td class="num">${r[3]}</td></tr>`;
+  });
+  document.getElementById('dataTable').innerHTML = html;
+
+  // ---------- chart ----------
+  drawChart(_QA,dPA,_QB,dPB,_QAB,dPAB,predDP,Kavg,catalog);
+
+  // ---------- findings ----------
+  const findings=[];
+
+  // 1. Overall verdict on whether the low flow gain is "normal" system-curve behaviour
+  let verdictClass='ok', verdictTag='ปกติตามทฤษฎี', verdictText='';
+  if(Math.abs(gapPct) <= 12){
+    verdictText = `Flow ที่เพิ่มขึ้นจาก ${Math.max(_QA,_QB).toFixed(1)} → ${_QAB.toFixed(1)} CMH (+${flowGainPct.toFixed(0)}%) สอดคล้องกับ system curve ที่คำนวณจากข้อมูลปั๊มเดี่ยว (n≈${nAvg.toFixed(2)}, ใกล้เคียง 2 คือ friction-dominated) เป็นพฤติกรรมปกติของปั๊มขนาน ไม่ใช่ความผิดปกติของอุปกรณ์ — สาเหตุคือ system curve ของวงจรชันเกินกว่าจะได้ flow เพิ่มเป็นสองเท่าเมื่อรันคู่`;
+    verdictClass='ok'; verdictTag='RESULT · NORMAL PARALLEL-CURVE BEHAVIOR';
+  } else if(gapPct > 12){
+    verdictText = `ที่ flow รวม ${_QAB.toFixed(1)} CMH ระบบใช้ Head จริง (${dPAB.toFixed(2)} m) สูงกว่าที่ system curve เดิมทำนายไว้ (${predDP.toFixed(2)} m) อยู่ ${gapPct.toFixed(0)}% แปลว่ามี "แรงต้านเพิ่มเติม" เกิดขึ้นเฉพาะตอนรันสองตัวพร้อมกัน — จุดที่น่าสงสัยที่สุดคือ common header/จุดรวมท่อ (ทั้งด้าน suction และ discharge)`;
+    verdictClass='warn'; verdictTag='RESULT · EXTRA RESISTANCE WHEN RUNNING PARALLEL';
+  } else {
+    verdictText = `ΔP จริงที่วัดได้ต่ำกว่าที่ system curve ทำนายไว้ ${Math.abs(gapPct).toFixed(0)}% ซึ่งผิดปกติ (ควรจะสูงขึ้นตาม flow) — ควรตรวจสอบความแม่นยำของเกจ/ทรานสมิตเตอร์ก่อน หรือมีทางลัด/บายพาสที่เปิดอยู่ทำให้ flow ส่วนหนึ่งไหลลัดวงจรไม่ผ่าน load จริง`;
+    verdictClass='warn'; verdictTag='RESULT · LOWER RESISTANCE THAN EXPECTED (CHECK INSTRUMENTS)';
+  }
+  document.getElementById('verdictBox').innerHTML = `<div class="verdict ${verdictClass}"><span class="tag">${verdictTag}</span><p>${verdictText}</p></div>`;
+
+  // 1b. Catalog comparison — absolute check against manufacturer curve (most reliable)
+  [['A',devA,dPA,HrefA],['B',devB,dPB,HrefB]].forEach(([name,dev,measured,ref])=>{
+    if(dev < -8){
+      findings.push({
+        cls:'f-bad', icon:'▼',
+        title:`Pump ${name} ให้ Head ต่ำกว่า Catalog Curve ที่ flow เดียวกัน ${Math.abs(dev).toFixed(0)}%`,
+        body:`ที่ flow ${name==='A'?_QA.toFixed(1):_QB.toFixed(1)} CMH วัด Head ได้จริง ${measured.toFixed(2)} m แต่ตาม catalog ควรได้ ${ref.toFixed(2)} m — เป็นหลักฐานตรงว่าปั๊ม${name}เสื่อมสภาพ/มีปัญหาจริง (ไม่ใช่แค่เทียบกับปั๊มอีกตัว) เช่น impeller สึก, wear ring หลวม, valve เปิดไม่สุด, หรือ strainer อุดตัน ควรตรวจสอบก่อนเป็นลำดับแรก`
+      });
+    } else if(dev > 8){
+      findings.push({
+        cls:'f-warn', icon:'▲',
+        title:`Pump ${name} ให้ Head สูงกว่า Catalog Curve ${dev.toFixed(0)}%`,
+        body:`สูงกว่าที่ระบุใน datasheet ที่ flow เดียวกัน — ให้ตรวจสอบความแม่นยำของ flow meter/เกจวัด, ตำแหน่งจุดวัดเทียบกับจุดอ้างอิงในกราฟ, หรือ impeller ที่ติดตั้งจริงอาจ trim ขนาดต่างจาก 213mm ที่ระบุใน datasheet`
+      });
+    }
+  });
+
+  // 2. pump mismatch
+  if(Math.abs(flowDiffPct) > 12 || Math.abs(dpDiffPct) > 12){
+    const weak = QA<QB? 'A':'B';
+    findings.push({
+      cls:'f-warn', icon:'⚠',
+      title:`Pump ${weak} มีสมรรถนะต่ำกว่าอีกตัวเมื่อรันเดี่ยว`,
+      body:`Flow ต่างกัน ${Math.abs(flowDiffPct).toFixed(0)}% และ ΔP ต่างกัน ${Math.abs(dpDiffPct).toFixed(0)}% ทั้งที่ควรมี performance ใกล้เคียงกัน (สมมติเป็นปั๊มรุ่น/ขนาดเดียวกัน) — ตรวจสอบ impeller สึก, clearance วงแหวนกันรั่วภายใน, valve หน้า/หลังปั๊มเปิดไม่สุด, หรือ strainer ฝั่ง suction ของปั๊มที่อ่อนกว่าอุดตัน`
+    });
+  }
+
+  // 3. suction blockage vs impeller wear differentiation for the weaker pump
+  const weakIsA = dPA < dPB;
+  const weakPs = weakIsA? PsA:PsB, otherPs = weakIsA? PsB:PsA;
+  if(Math.abs(flowDiffPct) > 12){
+    if(weakPs < otherPs - 0.05*Math.abs(otherPs||1)){
+      findings.push({
+        cls:'f-bad', icon:'●',
+        title:`สัญญาณบ่งชี้ suction-side restriction ที่ปั๊ม${weakIsA?'A':'B'}`,
+        body:`Suction pressure ของปั๊มที่อ่อนกว่าต่ำผิดปกติเมื่อเทียบกับอีกตัว — เข้าข่าย strainer อุดตัน, valve suction เปิดไม่สุด หรือเริ่มเกิด cavitation ที่ทางดูด ควรเปิดตรวจ/ทำความสะอาด strainer ก่อนเป็นอันดับแรก`
+      });
+    } else {
+      findings.push({
+        cls:'f-warn', icon:'●',
+        title:`สัญญาณเอียงไปทาง internal wear มากกว่า suction blockage`,
+        body:`Suction pressure ของปั๊มที่อ่อนกว่าใกล้เคียงปกติ แต่ให้ ΔP/flow ต่ำกว่า — เข้าข่าย impeller สึก, wear ring หลวม หรือ internal recirculation ภายในปั๊ม ควรตรวจสอบตาม PM/ประวัติ overhaul`
+      });
+    }
+  }
+
+  // 4. common header restriction (suction)
+  if(suctionDrop > 0.05*Math.abs(minSingleSuction||1) + 0.02){
+    findings.push({
+      cls:'f-warn', icon:'▼',
+      title:'Suction header ร่วมมีการสูญเสียแรงดันเพิ่มขึ้นชัดเจนเมื่อรันคู่',
+      body:`Suction pressure ที่ header ร่วมตอนรัน A+B ต่ำกว่าค่าต่ำสุดตอนรันเดี่ยวอยู่ ${suctionDrop.toFixed(3)} (หน่วยเดียวกับที่กรอก) — ความเร็วน้ำใน suction manifold ที่ flow รวมสูงขึ้นอาจเข้าใกล้ขีดจำกัด NPSH ตรวจสอบขนาดท่อ suction ร่วม/underground header และความเสี่ยง cavitation`
+    });
+  }
+
+  // 5. current asymmetry during combined run -> flow split imbalance / check valve issue
+  if(Math.abs(currAsymPct) > 12){
+    const lowCurr = IA2<IB2? 'A':'B';
+    findings.push({
+      cls:'f-warn', icon:'⌁',
+      title:`กระแสไฟฟ้าไม่สมดุลระหว่างปั๊มขณะรันคู่ (ปั๊ม${lowCurr} รับโหลดน้อยกว่า)`,
+      body:`ปั๊ม${lowCurr} มีกระแสต่ำกว่าอีกตัว ${Math.abs(currAsymPct).toFixed(0)}% ขณะรันพร้อมกัน — บ่งชี้ว่าปั๊มตัวนี้ contribute flow เข้าสู่ header ร่วมน้อยกว่าที่ควร ให้ตรวจ check valve/non-return valve ที่ discharge ของปั๊มนี้ว่าเปิดสุดหรือมีการไหลย้อน (recirculation) กลับเข้าปั๊มที่แรงกว่าหรือไม่`
+    });
+  }
+
+  // 6. current drop from single to combined (sanity note, informational)
+  if(currDropA < -8 || currDropB < -8){
+    findings.push({
+      cls:'f-ok', icon:'i',
+      title:'กระแสไฟฟ้าลดลงเมื่อรันคู่ — เป็นไปตาม pump curve ปกติ',
+      body:`เมื่อรันขนาน แต่ละปั๊มจะเลื่อนไปทำงานที่ flow ต่อตัวลดลง/head สูงขึ้นตาม curve ทำให้กระแสต่อตัวลดลงเป็นเรื่องปกติสำหรับ centrifugal pump ไม่ใช่ตัวชี้วัดปัญหาโดยตัวมันเอง`
+    });
+  }
+
+  if(findings.length===0){
+    findings.push({cls:'f-ok', icon:'✓', title:'ไม่พบสัญญาณผิดปกติเพิ่มเติมจากข้อมูลที่กรอก', body:'ข้อมูลทั้งหมดสอดคล้องกับพฤติกรรมปกติของระบบปั๊มขนานบน system curve เดียวกัน'});
+  }
+
+  document.getElementById('findings').innerHTML = findings.map(f=>`
+    <div class="finding ${f.cls}">
+      <div class="icon">${f.icon}</div>
+      <div class="body"><b>${f.title}</b><span>${f.body}</span></div>
+    </div>`).join('');
+
+  // ---------- checklist ----------
+  const checklist = [
+    'วัด/เช็ค suction & discharge pressure ที่ตัวปั๊มโดยตรง (ไม่ใช่แค่ header ร่วม) ขณะรันคู่ เพื่อแยกว่าแต่ละปั๊มยังทำงานตาม curve ของตัวเองหรือไม่',
+    'ตรวจ check valve/non-return valve ที่ discharge ของปั๊มแต่ละตัว — เป็นจุดที่พบบ่อยที่สุดที่ทำให้ parallel operation ได้ flow น้อยกว่าคาด',
+    'ตรวจสอบขนาด common header (ทั้ง suction manifold และ discharge manifold) ว่า sizing รองรับ flow รวมที่ velocity เหมาะสมหรือไม่',
+    'เทียบ pump curve จริง (จาก datasheet/factory test) กับจุดทำงานที่วัดได้ ว่าตรงกับ curve เดิมหรือเสื่อมสภาพ (impeller wear)',
+    'ทำความสะอาด strainer ทั้งสองฝั่ง suction ก่อนการทดสอบซ้ำ เพื่อตัดตัวแปรเรื่อง blockage ออกไปก่อน',
+    'ถ้าต้องการ flow รวมมากกว่านี้จริง ๆ และระบบยืนยันว่าเป็นพฤติกรรมปกติของ system curve ให้พิจารณาลด system resistance (ท่อใหญ่ขึ้น/ลด elbow) แทนการไล่หาความผิดปกติที่ปั๊ม'
+  ];
+  document.getElementById('checklist').innerHTML = checklist.map(c=>`<li>${c}</li>`).join('');
+
+  document.getElementById('results').style.display='block';
+  document.getElementById('results').scrollIntoView({behavior:'smooth'});
+  }catch(e){
+    const errBox=document.getElementById('errBox');
+    errBox.textContent = '⚠ เกิดข้อผิดพลาดในการคำนวณ: '+e.message+' (ลองตรวจสอบว่าค่าที่กรอกสมเหตุสมผล เช่น flow/ΔP ไม่เป็น 0 หรือค่าลบผิดที่)';
+    errBox.style.display='block';
+    document.getElementById('results').style.display='none';
+  }
+}
+
+function drawChart(QA,dPA,QB,dPB,QAB,dPAB,predDP,K,catalog){
+  const w=680,h=340,pad=44;
+  const maxQ = Math.max(QA,QB,QAB)*1.25;
+  const catHigh = catalog.fn(0.6*maxQ);
+  const maxDP = Math.max(dPA,dPB,dPAB,predDP,catalog.c0,catHigh)*1.2;
+  const x = q => pad + (q/maxQ)*(w-pad*1.5);
+  const y = p => h-pad - (Math.max(p,0)/maxDP)*(h-pad*1.6);
+
+  // system curve path (dashed grey)
+  let path='', catPath='';
+  const steps=60;
+  for(let i=0;i<=steps;i++){
+    const q = (maxQ*i/steps);
+    const p = K*q*q;
+    path += (i===0? 'M':'L') + x(q).toFixed(1) + ',' + y(p).toFixed(1) + ' ';
+    const pc = catalog.fn(q);
+    catPath += (i===0? 'M':'L') + x(q).toFixed(1) + ',' + y(pc).toFixed(1) + ' ';
+  }
+
+  const gridLines = [];
+  for(let i=1;i<=4;i++){
+    const gy = h-pad - (i/4)*(h-pad*1.6);
+    gridLines.push(`<line x1="${pad}" y1="${gy.toFixed(1)}" x2="${w-8}" y2="${gy.toFixed(1)}" stroke="#1e3a52" stroke-width="1" stroke-dasharray="3,4"/>`);
+  }
+
+  const svg = `
+  <svg viewBox="0 0 ${w} ${h}" xmlns="http://www.w3.org/2000/svg">
+    ${gridLines.join('')}
+    <line x1="${pad}" y1="${h-pad}" x2="${w-8}" y2="${h-pad}" stroke="#3fd0e0" stroke-width="1"/>
+    <line x1="${pad}" y1="${8}" x2="${pad}" y2="${h-pad}" stroke="#3fd0e0" stroke-width="1"/>
+    <text x="${w/2}" y="${h-8}" fill="#7f9bb0" font-size="11" font-family="IBM Plex Mono,monospace" text-anchor="middle">Flow (Q)</text>
+    <text x="14" y="${h/2}" fill="#7f9bb0" font-size="11" font-family="IBM Plex Mono,monospace" text-anchor="middle" transform="rotate(-90 14 ${h/2})">Head (m)</text>
+
+    <path d="${catPath}" fill="none" stroke="#b39ddb" stroke-width="1.5" stroke-dasharray="1,4"/>
+    <path d="${path}" fill="none" stroke="#7f9bb0" stroke-width="1.5" stroke-dasharray="5,4"/>
+
+    <circle cx="${x(QA)}" cy="${y(dPA)}" r="5" fill="#3fd0e0"/>
+    <circle cx="${x(QB)}" cy="${y(dPB)}" r="5" fill="#f0a93a"/>
+    <circle cx="${x(QAB)}" cy="${y(dPAB)}" r="6" fill="#4fbf8b"/>
+    <circle cx="${x(QAB)}" cy="${y(predDP)}" r="5" fill="#e2555a"/>
+    <line x1="${x(QAB)}" y1="${y(dPAB)}" x2="${x(QAB)}" y2="${y(predDP)}" stroke="#e2555a" stroke-width="1" stroke-dasharray="2,3"/>
+  </svg>`;
+  document.getElementById('chart').innerHTML = svg;
+}
+</script>
+</body>
+</html>
